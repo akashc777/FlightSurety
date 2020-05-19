@@ -167,6 +167,10 @@ contract FlightSuretyApp {
         return operational;  // Modify to call data contract's status
     }
 
+    function setOperatingStatus(bool mode) external requireContractOwner {
+        operational = mode;
+    }
+
     /********************************************************************************************/
     /*                                     SMART CONTRACT FUNCTIONS                             */
     /********************************************************************************************/
@@ -184,10 +188,30 @@ contract FlightSuretyApp {
                             airlineIsNotRegistered(airline) // Airline is not registered yet
                             isAirlineFunded(msg.sender) // Voter is a funded airline
                             returns(bool success, uint256 votes, uint256 registeredAirlineCount)
-                            pure
-                            returns(bool success, uint256 votes)
+                           
     {
-        return (success, 0);
+       // If less than required minimum airlines for voting process
+        if (flightSuretyData.getRegisteredAirlineCount() <= AIRLINE_VOTING_THRESHOLD) {
+            flightSuretyData.registerAirline(airline, msg.sender);
+            return(success, 0, flightSuretyData.getRegisteredAirlineCount());
+        } else {
+            // Check for duplicates
+            bool isDuplicate = false;
+            for (uint256 i = 0; i < pendingAirlines[airline].length; i++) {
+                if (pendingAirlines[airline][i] == msg.sender) {
+                    isDuplicate = true;
+                    break;
+                }
+            }
+            require(!isDuplicate, "Duplicate vote, you cannot vote for the same airline twice.");
+            pendingAirlines[airline].push(msg.sender);
+            // Check if enough votes to register airline
+            if (pendingAirlines[airline].length >= flightSuretyData.getRegisteredAirlineCount().div(AIRLINE_REGISTRATION_REQUIRED_VOTES)) {
+                flightSuretyData.registerAirline(airline, msg.sender);
+                return(true, pendingAirlines[airline].length, flightSuretyData.getRegisteredAirlineCount());
+            }
+            return(false, pendingAirlines[airline].length, flightSuretyData.getRegisteredAirlineCount());
+        }
     }
 
 
