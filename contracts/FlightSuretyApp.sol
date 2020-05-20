@@ -37,13 +37,13 @@ contract FlightSuretyApp {
     uint256 AIRLINE_REGISTRATION_REQUIRED_VOTES = 2;
 
 
-    struct Flight {
+    // Airlines
+    struct PendingAirline {
         bool isRegistered;
-        uint8 statusCode;
-        uint256 updatedTimestamp;        
-        address airline;
+        bool isFunded;
     }
-    mapping(bytes32 => Flight) private flights;
+
+    mapping(address => address[]) public pendingAirlines;
 
     FlightSuretyData flightSuretyData;
     bool private operational = true;
@@ -214,6 +214,20 @@ contract FlightSuretyApp {
         }
     }
 
+    function fundAirline()
+        external
+        payable
+        requireIsOperational
+        requireIsAirlineRegistered(msg.sender)
+        requireAirlineIsNotFunded(msg.sender)
+        requireSufficientFunding(AIRLINE_REGISTRATION_FEE)
+        returns(bool)
+    {
+        address(uint160(address(flightSuretyData))).transfer(AIRLINE_REGISTRATION_FEE);
+        return flightSuretyData.fundAirline(msg.sender, AIRLINE_REGISTRATION_FEE);
+    }
+
+
 
    /**
     * @dev Register a future flight for insuring.
@@ -221,11 +235,25 @@ contract FlightSuretyApp {
     */  
     function registerFlight
                                 (
+                                    string calldata flightNumber,
+                                    uint256 timestamp,
+                                    string calldata departureLocation,
+                                    string calldata arrivalLocation
                                 )
                                 external
-                                pure
+                                requireIsOperational
+                                requireIsAirlineFunded(msg.sender)
     {
 
+        bytes32 flightKey = getFlightKey(msg.sender, flightNumber, timestamp);
+        flightSuretyData.registerFlight(
+            flightKey,
+            timestamp,
+            msg.sender,
+            flightNumber,
+            departureLocation,
+            arrivalLocation
+        );
     }
     
    /**
@@ -240,8 +268,9 @@ contract FlightSuretyApp {
                                     uint8 statusCode
                                 )
                                 internal
-                                pure
+                                requireIsOperational
     {
+        flightSuretyData.processFlightStatus(airline, flight, timestamp, statusCode);
     }
 
 
@@ -249,22 +278,47 @@ contract FlightSuretyApp {
     function fetchFlightStatus
                         (
                             address airline,
-                            string flight,
-                            uint256 timestamp                            
+                            string calldata flight,
+                            uint256 timestamp,
+                            bytes32 flightKey                         
                         )
                         external
+                        requireFlightIsRegistered(flightKey)
+                        requireFlightIsNotLanded(flightKey)
     {
-        uint8 index = getRandomIndex(msg.sender);
-
-        // Generate a unique key for storing the request
+         // Generate a unique key for storing the request
         bytes32 key = keccak256(abi.encodePacked(index, airline, flight, timestamp));
         oracleResponses[key] = ResponseInfo({
-                                                requester: msg.sender,
+                                                requester: msg.sender, 
                                                 isOpen: true
-                                            });
+                                             });
 
         emit OracleRequest(index, airline, flight, timestamp);
     } 
+
+
+    function buyInsurance
+    (
+        bytes32 flightKey
+    )
+        public
+        payable
+        requireIsOperational
+        requireFlightIsRegistered(flightKey)
+        requireFlightIsNotLanded(flightKey)
+        requirePassengerNotInsuredForFlight(flightKey, msg.sender)
+        requireLessThanMaxInsurance()
+    {
+        address(uint160(address(flightSuretyData))).transfer(msg.value);
+        flightSuretyData.buyInsurance(flightKey, msg.sender, msg.value, INSURANCE_PAYOUT);
+    }
+
+    function pay() external requireIsOperational {
+        flightSuretyData.pay(msg.sender);
+    }
+
+
+
 
 
 // region ORACLE MANAGEMENT
