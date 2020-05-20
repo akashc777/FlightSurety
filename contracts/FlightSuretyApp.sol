@@ -1,4 +1,4 @@
-pragma solidity ^0.4.25;
+pragma solidity ^0.4.24;
 
 // It's important to avoid vulnerabilities due to numeric overflow bugs
 // OpenZeppelin's SafeMath library, when used correctly, protects agains such bugs
@@ -161,7 +161,7 @@ contract FlightSuretyApp {
 
     function isOperational() 
                             public 
-                            pure 
+                            view
                             returns(bool) 
     {
         return operational;  // Modify to call data contract's status
@@ -181,12 +181,13 @@ contract FlightSuretyApp {
     *
     */   
     function registerAirline
-                            (   
+                            (  
+                                address airline 
                             )
                             external
                             requireIsOperational
-                            airlineIsNotRegistered(airline) // Airline is not registered yet
-                            isAirlineFunded(msg.sender) // Voter is a funded airline
+                            requireAirlineIsNotRegistered(airline) // Airline is not registered yet
+                            requireIsAirlineFunded(msg.sender) // Voter is a funded airline
                             returns(bool success, uint256 votes, uint256 registeredAirlineCount)
                            
     {
@@ -235,10 +236,10 @@ contract FlightSuretyApp {
     */  
     function registerFlight
                                 (
-                                    string calldata flightNumber,
+                                    string flightNumber,
                                     uint256 timestamp,
-                                    string calldata departureLocation,
-                                    string calldata arrivalLocation
+                                    string  departureLocation,
+                                    string  arrivalLocation
                                 )
                                 external
                                 requireIsOperational
@@ -278,7 +279,7 @@ contract FlightSuretyApp {
     function fetchFlightStatus
                         (
                             address airline,
-                            string calldata flight,
+                            string  flight,
                             uint256 timestamp,
                             bytes32 flightKey                         
                         )
@@ -286,6 +287,8 @@ contract FlightSuretyApp {
                         requireFlightIsRegistered(flightKey)
                         requireFlightIsNotLanded(flightKey)
     {
+
+        uint8 index = getRandomIndex(msg.sender);
          // Generate a unique key for storing the request
         bytes32 key = keccak256(abi.encodePacked(index, airline, flight, timestamp));
         oracleResponses[key] = ResponseInfo({
@@ -493,3 +496,38 @@ contract FlightSuretyApp {
 // endregion
 
 }   
+
+
+// INterface for FlightSuretyData 
+
+contract FlightSuretyData {
+    function isOperational() public view returns(bool);
+    function setOperatingStatus(bool mode) external;
+    function isAirlineRegistered(address airline) public view returns(bool);
+    function isAirlineFunded(address airline) public view returns(bool);
+    function isFlightRegistered(bytes32 flightKey) public view returns(bool);
+    function isFlightLanded(bytes32 flightKey) public view returns(bool);
+    function isPassengerInsuredForFlight(bytes32 flightKey, address passenger) public view returns(bool);
+    function registerAirline(address newAirline, address registeringAirline) external;
+    function fundAirline(address airline, uint256 amount) external returns(bool);
+    function getRegisteredAirlineCount() public view returns(uint256);
+    function getFundedAirlineCount() public view returns(uint256);
+    function registerFlight
+    (
+        bytes32 flightKey,
+        uint256 timestamp,
+        address airline,
+        string memory flightNumber,
+        string memory departureLocation,
+        string memory arrivalLocation
+    )
+        public
+        payable;
+    function getCountRegisteredFlights() public view returns(uint256);
+    function processFlightStatus(address airline, string flight, uint256 timestamp, uint8 statusCode) external;
+    function buyInsurance(bytes32 flightKey, address passenger, uint256 amount, uint256 payout) external payable;
+    function creditInsurees(bytes32 flightKey) internal;
+    function pay(address payoutAddress) external;
+    function getFlightKey(address airline, string memory flight, uint256 timestamp) internal pure returns(bytes32);
+    function fund() public payable;
+}
